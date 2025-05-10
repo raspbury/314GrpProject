@@ -25,11 +25,14 @@ export class ShortlistEntity {
     let connection;
     try {
       connection = await this.dbPool.getConnection();
-      const [result] = await connection.query(sql, [serviceId, homeownerUsername]);
+      const [result] = await connection.query(sql, [
+        serviceId,
+        homeownerUsername,
+      ]);
       return result.affectedRows > 0;
     } catch (error) {
       console.error("Database error during shortlist creation:", error);
-      throw new Error('Database error during shortlist creation.');
+      throw new Error("Database error during shortlist creation.");
     } finally {
       if (connection) connection.release();
     }
@@ -50,11 +53,14 @@ export class ShortlistEntity {
           AND serviceID = ?
     `;
     try {
-      const [rows] = await this.dbPool.query(sql, [homeOwnerUsername, serviceId]);
+      const [rows] = await this.dbPool.query(sql, [
+        homeOwnerUsername,
+        serviceId,
+      ]);
       return rows.length > 0;
     } catch (error) {
       console.error("Database error while checking shortlist entry:", error);
-      throw new Error('Database error while checking shortlist entry.');
+      throw new Error("Database error while checking shortlist entry.");
     }
   }
 
@@ -70,44 +76,87 @@ export class ShortlistEntity {
    * @param {string} [searchParams.description] - Partial match for the service's description.
    * @param {number} [searchParams.minPrice] - Minimum price per hour of the service.
    * @param {number} [searchParams.maxPrice] - Maximum price per hour of the service.
-   * @returns {Promise<number[]>} An array of service IDs that match the criteria.
+   * @returns {Promise<object[]>} An array of objects containing service details that match the criteria.
    */
   async searchShortlistedServices(searchParams) {
-    const { homeownerUsername, cleanerUsername, description, minPrice, maxPrice } = searchParams;
+    const {
+      homeownerUsername,
+      cleanerUsername,
+      description,
+      minPrice,
+      maxPrice,
+    } = searchParams;
 
     let sql = `
-        SELECT sl.serviceID
+        SELECT s.serviceID, s.cleanerUsername, s.description, s.pricePerHour, 
+               sc.name as categoryName
         FROM Shortlist sl
-                 JOIN Service s ON sl.serviceID = s.serviceID
-        WHERE sl.homeOwnerUsername = ?
-          AND s.isActive = TRUE
+        JOIN Service s ON sl.serviceID = s.serviceID
+        JOIN ServiceCategory sc ON s.categoryID = sc.id
+        WHERE sl.homeOwnerUsername = ? AND s.isActive = TRUE
     `;
     const params = [homeownerUsername];
 
     if (cleanerUsername) {
-      sql += ' AND s.cleanerUsername LIKE ?';
+      sql += " AND s.cleanerUsername LIKE ?";
       params.push(`%${cleanerUsername}%`);
     }
     if (description) {
-      sql += ' AND s.description LIKE ?';
+      sql += " AND s.description LIKE ?";
       params.push(`%${description}%`);
     }
     if (minPrice !== undefined && minPrice !== null) {
-      sql += ' AND s.pricePerHour >= ?';
+      sql += " AND s.pricePerHour >= ?";
       params.push(minPrice);
     }
     if (maxPrice !== undefined && maxPrice !== null) {
-      sql += ' AND s.pricePerHour <= ?';
+      sql += " AND s.pricePerHour <= ?";
       params.push(maxPrice);
     }
-    sql += ' ORDER BY sl.serviceID ASC'; // Or any other relevant ordering
+    sql += " ORDER BY s.serviceID ASC"; // Or any other relevant ordering
 
     try {
       const [rows] = await this.dbPool.query(sql, params);
-      return rows.map(row => row.serviceID);
+      return rows.map((row) => ({
+        serviceId: row.serviceID,
+        cleanerUsername: row.cleanerUsername,
+        description: row.description,
+        pricePerHour: parseFloat(row.pricePerHour),
+        categoryName: row.categoryName,
+      }));
     } catch (error) {
-      console.error("Database error during shortlisted services search:", error);
-      throw new Error('Database error during shortlisted services search.');
+      console.error(
+        "Database error during shortlisted services search:",
+        error
+      );
+      throw new Error("Database error during shortlisted services search.");
+    }
+  }
+
+  /**
+   * Deletes a specific shortlist entry from the database.
+   * @param {string} homeownerUsername - The username of the homeowner.
+   * @param {number} serviceId - The ID of the service.
+   * @returns {Promise<boolean>} True if the entry was deleted successfully, throws an error otherwise.
+   */
+  async deleteShortlistEntry(homeownerUsername, serviceId) {
+    const sql = `
+        DELETE FROM Shortlist 
+        WHERE homeownerUsername = ? AND serviceID = ?
+    `;
+
+    try {
+      const [result] = await this.dbPool.query(sql, [
+        homeownerUsername,
+        serviceId,
+      ]);
+      if (result.affectedRows === 0) {
+        throw new Error("Shortlist entry not found");
+      }
+      return true;
+    } catch (error) {
+      console.error("Error deleting shortlist entry:", error);
+      throw error;
     }
   }
 }

@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: isProduction
             ? 'https://csit314-l8lmx.ondigitalocean.app'
-            : 'http://localhost:5000',
+            : 'http://localhost:5123',
           changeOrigin: true,
         }
       }
